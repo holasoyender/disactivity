@@ -1,4 +1,7 @@
+mod discord_ipc;
+
 use chrono::{DateTime, Utc};
+use discord_ipc::DiscordIpcConnection;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -18,14 +21,21 @@ const CACHE_EXPIRY_DAYS: i64 = 2;
 const SLAVE_EXE: &[u8] = include_bytes!("../slave/target/release/slave.exe");
 
 /// Tracks a running game process
-struct RunningGame {
-    process: Child,
-    temp_dir: PathBuf,
+enum RunningGameType {
+    /// A game launched via the slave executable
+    Executable {
+        process: Child,
+        temp_dir: PathBuf,
+    },
+    /// A game launched via Discord IPC RPC (for Steam-only games or any game without executables)
+    DiscordRpc {
+        connection: DiscordIpcConnection,
+    },
 }
 
 /// State to track all running game processes
 struct AppState {
-    running_games: Mutex<HashMap<String, RunningGame>>,
+    running_games: Mutex<HashMap<String, RunningGameType>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -36,6 +46,27 @@ pub struct Executable {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ThirdPartySku {
+    #[serde(default)]
+    pub distributor: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_string_or_number")]
+    pub id: Option<String>,
+}
+
+/// Deserialize a value that can be either a string or a number into Option<String>
+fn deserialize_string_or_number<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    Ok(value.and_then(|v| match v {
+        serde_json::Value::String(s) => Some(s),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }))
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Game {
     pub id: String,
     pub name: String,
@@ -43,7 +74,10 @@ pub struct Game {
     pub icon_hash: Option<String>,
     #[serde(default)]
     pub executables: Option<Vec<Executable>>,
+    #[serde(default)]
     pub aliases: Vec<String>,
+    #[serde(default)]
+    pub third_party_skus: Option<Vec<ThirdPartySku>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -135,23 +169,48 @@ async fn fetch_from_api() -> Result<Vec<Game>, String> {
         .await
         .map_err(|e| format!("Failed to fetch games: {}", e))?;
 
-    let mut games: Vec<Game> = response_games
+    let mut games: Vec<Game> = Vec::new();
+
+    let raw_games: Vec<serde_json::Value> = response_games
         .json()
         .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+        .map_err(|e| format!("Failed to parse games response: {}", e))?;
+
+    for raw in &raw_games {
+        match serde_json::from_value::<Game>(raw.clone()) {
+            Ok(game) => games.push(game),
+            Err(e) => {
+                let name = raw.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                eprintln!("Warning: Failed to parse game '{}': {}", name, e);
+            }
+        }
+    }
 
     if response_non_games.status().is_success() {
-        let non_games: Vec<Game> = response_non_games
+        let raw_non_games: Vec<serde_json::Value> = response_non_games
             .json()
             .await
-            .map_err(|e| format!("Failed to parse response: {}", e))?;
-        games.extend(non_games);
+            .map_err(|e| format!("Failed to parse non-games response: {}", e))?;
+
+        for raw in &raw_non_games {
+            match serde_json::from_value::<Game>(raw.clone()) {
+                Ok(game) => games.push(game),
+                Err(e) => {
+                    let name = raw.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                    eprintln!("Warning: Failed to parse non-game '{}': {}", name, e);
+                }
+            }
+        }
     }
 
     Ok(games.iter().filter(|game| {
-        game.executables
+        let has_executables = game.executables
             .as_ref()
-            .map_or(false, |execs| !execs.is_empty())
+            .map_or(false, |execs| !execs.is_empty());
+        let has_steam_sku = game.third_party_skus
+            .as_ref()
+            .map_or(false, |skus| skus.iter().any(|sku| sku.distributor.as_deref() == Some("steam")));
+        has_executables || has_steam_sku
     }).cloned().collect())
 }
 
@@ -287,7 +346,7 @@ fn start_game(
     let mut running = state.running_games.lock().map_err(|e| e.to_string())?;
     running.insert(
         game_id.clone(),
-        RunningGame {
+        RunningGameType::Executable {
             process,
             temp_dir,
         },
@@ -297,16 +356,58 @@ fn start_game(
 }
 
 #[tauri::command]
+fn start_steam_game(
+    game_id: String,
+    steam_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    // Check if game is already running
+    {
+        let running = state.running_games.lock().map_err(|e| e.to_string())?;
+        if running.contains_key(&game_id) {
+            return Err("Game is already running".to_string());
+        }
+    }
+    
+    // Connect to Discord via IPC using the game's Discord Application ID
+    let mut connection = DiscordIpcConnection::connect(&game_id)
+        .map_err(|e| format!("Failed to connect to Discord: {}. Make sure Discord is running.", e))?;
+
+    // Set the activity so Discord shows "Playing [Game Name]"
+    connection.set_activity()
+        .map_err(|e| format!("Failed to set Discord activity: {}", e))?;
+
+    // Track the game as running
+    let mut running = state.running_games.lock().map_err(|e| e.to_string())?;
+    running.insert(
+        game_id.clone(),
+        RunningGameType::DiscordRpc {
+            connection,
+        },
+    );
+
+    Ok(format!("Discord RPC active for game {} (Steam App {})", game_id, steam_id))
+}
+
+#[tauri::command]
 fn stop_game(game_id: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
     let mut running = state.running_games.lock().map_err(|e| e.to_string())?;
 
-    if let Some(mut game) = running.remove(&game_id) {
-        // Kill the process
-        let _ = game.process.kill();
-        let _ = game.process.wait();
-
-        // Cleanup temp directory
-        cleanup_game(&game.temp_dir)?;
+    if let Some(game) = running.remove(&game_id) {
+        match game {
+            RunningGameType::Executable { mut process, temp_dir } => {
+                // Kill the process
+                let _ = process.kill();
+                let _ = process.wait();
+                // Cleanup temp directory
+                cleanup_game(&temp_dir)?;
+            }
+            RunningGameType::DiscordRpc { mut connection } => {
+                // Clear activity and close the IPC connection
+                let _ = connection.clear_activity();
+                connection.close();
+            }
+        }
     }
 
     Ok(())
@@ -354,10 +455,18 @@ fn toggle_favorite(game_id: String) -> Result<bool, String> {
 /// Stop all running games and cleanup
 fn cleanup_all_games(state: &AppState) {
     if let Ok(mut running) = state.running_games.lock() {
-        for (_, mut game) in running.drain() {
-            let _ = game.process.kill();
-            let _ = game.process.wait();
-            let _ = cleanup_game(&game.temp_dir);
+        for (_, game) in running.drain() {
+            match game {
+                RunningGameType::Executable { mut process, temp_dir } => {
+                    let _ = process.kill();
+                    let _ = process.wait();
+                    let _ = cleanup_game(&temp_dir);
+                }
+                RunningGameType::DiscordRpc { mut connection } => {
+                    let _ = connection.clear_activity();
+                    connection.close();
+                }
+            }
         }
     }
 
@@ -381,6 +490,7 @@ pub fn run() {
             fetch_games,
             get_cache_info,
             start_game,
+            start_steam_game,
             stop_game,
             get_running_games,
             get_favorites,

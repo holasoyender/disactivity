@@ -17,12 +17,18 @@ export interface Executable {
     os?: string
 }
 
+export interface ThirdPartySku {
+    distributor?: string | null
+    id?: string | null
+}
+
 export interface Game {
     id: string
     name: string
     icon_hash: string
     executables?: Executable[] | null
     aliases?: string[] | null
+    third_party_skus?: ThirdPartySku[] | null
 }
 
 interface GameCardProps {
@@ -32,6 +38,7 @@ interface GameCardProps {
     isFavorite: boolean
     startTime?: number
     onStart: (game: Game, selectedExecutable?: string) => void
+    onStartSteam: (game: Game, steamId: string) => void
     onStop: (gameId: string) => void
     onToggleFavorite: (gameId: string) => void
 }
@@ -55,7 +62,7 @@ function formatElapsedTime(ms: number): string {
     return `${pad(minutes)}:${pad(seconds)}`
 }
 
-export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, onStart, onStop, onToggleFavorite }: GameCardProps) {
+export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, onStart, onStartSteam, onStop, onToggleFavorite }: GameCardProps) {
     const { t } = useTranslation()
     const [elapsed, setElapsed] = useState(0)
 
@@ -77,10 +84,21 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
         (exe) => exe.os === "win32" && !exe.name.startsWith(">")
     )
     const hasMultipleExecutables = win32Executables.length > 1
+    const hasExecutables = win32Executables.length > 0
+
+    // Get Steam SKUs (only those with valid distributor and id)
+    const steamSkus = (game.third_party_skus || []).filter(
+        (sku) => sku.distributor === "steam" && typeof sku.id === "string"
+    ) as Array<{ distributor: string; id: string }>
+    const hasSteamSkus = steamSkus.length > 0
+    const isSteamOnly = !hasExecutables && hasSteamSkus
 
     const handleClick = () => {
         if (isRunning) {
             onStop(game.id)
+        } else if (isSteamOnly) {
+            // Launch via Steam with the first Steam ID
+            onStartSteam(game, steamSkus[0].id)
         } else {
             onStart(game)
         }
@@ -139,6 +157,18 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
                                             </ul>
                                         </div>
                                     )}
+                                    {steamSkus.length > 0 && (
+                                        <div className="text-xs">
+                                            <p className="font-medium">Steam:</p>
+                                            <ul className="list-disc list-inside">
+                                                {steamSkus.map((sku, idx) => (
+                                                    <li key={idx} className="text-muted-foreground">
+                                                        App ID: {sku.id}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
                                 </div>
                             </TooltipContent>
                         </Tooltip>
@@ -187,10 +217,15 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
             </TooltipProvider>
 
             <div className="flex shrink-0">
+                {isSteamOnly && !isRunning && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-medium whitespace-nowrap shrink-0 self-center mr-2">
+                        Steam
+                    </span>
+                )}
                 <Button
                     size="sm"
                     onClick={handleClick}
-                    className={`shrink-0 ${!isRunning && hasMultipleExecutables ? "rounded-r-none" : ""}`}
+                    className={`shrink-0 ${!isRunning && (hasMultipleExecutables || (hasExecutables && hasSteamSkus) || steamSkus.length > 1) ? "rounded-r-none" : ""}`}
                     variant={isRunning ? "destructive" : "default"}
                     disabled={isLoading}
                 >
@@ -203,7 +238,7 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
                     )}
                     {isRunning ? t("actions.stop") : t("actions.run")}
                 </Button>
-                {!isRunning && hasMultipleExecutables && (
+                {!isRunning && (hasMultipleExecutables || (hasExecutables && hasSteamSkus) || steamSkus.length > 1) && (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button
@@ -218,11 +253,25 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
                         <DropdownMenuContent align="end" className="max-h-60 overflow-y-auto">
                             {win32Executables.map((exe, idx) => (
                                 <DropdownMenuItem
-                                    key={idx}
+                                    key={`exe-${idx}`}
                                     onClick={() => onStart(game, exe.name)}
                                     className="text-xs font-mono cursor-pointer"
                                 >
                                     {exe.name}
+                                </DropdownMenuItem>
+                            ))}
+                            {hasExecutables && hasSteamSkus && (
+                                <div className="px-2 py-1.5">
+                                    <div className="h-px bg-border" />
+                                </div>
+                            )}
+                            {steamSkus.map((sku, idx) => (
+                                <DropdownMenuItem
+                                    key={`steam-${idx}`}
+                                    onClick={() => onStartSteam(game, sku.id)}
+                                    className="text-xs cursor-pointer"
+                                >
+                                    <span className="text-blue-400 mr-1.5">Steam</span> App {sku.id}
                                 </DropdownMenuItem>
                             ))}
                         </DropdownMenuContent>

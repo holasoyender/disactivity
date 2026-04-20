@@ -154,6 +154,33 @@ export default function GameLauncher() {
         }
     }
 
+    const handleStartSteamGame = async (game: Game, steamId: string) => {
+        setLoadingGames((prev) => new Set(prev).add(game.id))
+
+        try {
+            await invoke<string>("start_steam_game", {
+                gameId: game.id,
+                steamId: steamId,
+            })
+
+            setRunningGames((prev) => new Set(prev).add(game.id))
+            setGameStartTimes((prev) => new Map(prev).set(game.id, Date.now()))
+            toast.success(t("toast.gameStarted.title"), {
+                description: t("toast.gameStarted.description", { name: game.name }),
+            })
+        } catch (error) {
+            toast.error(t("toast.failedToStartGame.title"), {
+                description: `${error}`,
+            })
+        } finally {
+            setLoadingGames((prev) => {
+                const next = new Set(prev)
+                next.delete(game.id)
+                return next
+            })
+        }
+    }
+
     const handleStopGame = async (gameId: string) => {
         const game = games.find((g) => g.id === gameId)
         setLoadingGames((prev) => new Set(prev).add(gameId))
@@ -325,6 +352,7 @@ export default function GameLauncher() {
                                                 isFavorite={true}
                                                 startTime={gameStartTimes.get(game.id)}
                                                 onStart={handleStartGame}
+                                                onStartSteam={handleStartSteamGame}
                                                 onStop={handleStopGame}
                                                 onToggleFavorite={handleToggleFavorite}
                                             />
@@ -346,6 +374,7 @@ export default function GameLauncher() {
                                             isFavorite={favorites.has(game.id)}
                                             startTime={gameStartTimes.get(game.id)}
                                             onStart={handleStartGame}
+                                            onStartSteam={handleStartSteamGame}
                                             onStop={handleStopGame}
                                             onToggleFavorite={handleToggleFavorite}
                                         />
