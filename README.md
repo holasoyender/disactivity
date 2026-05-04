@@ -79,8 +79,7 @@ Disactivity works by:
    bun install
    ```
 
-3. 3. **Build the slave executable** (required)
-
+3. **Build the slave executable** (required)
    This component is responsible for creating the fake game process that Discord detects.
    The main app depends on it, so it must be built first.
    ```bash
