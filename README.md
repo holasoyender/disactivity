@@ -34,7 +34,7 @@ The app fetches the complete list of detectable games directly from Discord's AP
 
 - 🎮 **Thousands of Games** - Browse and search through Discord's complete detectable games database
 - ⭐ **Favorites** - Mark your most-used games for quick access
-- 🔄 **Auto-Updates** - Built-in updater to keep the app up to date (WIP)
+- 🔄 **Auto-Updates (WIP)** - Planned feature, not yet fully implemented
 - 🌐 **Multi-language** - Available in English and Spanish
 
 ## 📥 Download
@@ -79,7 +79,10 @@ Disactivity works by:
    bun install
    ```
 
-3. **Build the slave executable** (required before building the main app)
+3. 3. **Build the slave executable** (required)
+
+   This component is responsible for creating the fake game process that Discord detects.
+   The main app depends on it, so it must be built first.
    ```bash
    cd src-tauri/slave
    cargo build --release
@@ -123,6 +126,20 @@ disactivity/
 ## ⚠️ Disclaimer
 
 This application is for entertainment purposes only. Use responsibly and in accordance with Discord's Terms of Service.
+
+## 🧩 Troubleshooting
+
+### App not detecting games
+- Make sure Discord is running
+- Restart Discord after starting a process
+
+### Build fails
+- Ensure Rust is installed and updated: `rustup update`
+- Ensure Bun is properly installed
+
+### Nothing happens when clicking "Run"
+- Try running the app as administrator
+- Check if antivirus is blocking the executable
 
 ## 📄 License
 
