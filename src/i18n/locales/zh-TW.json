@@ -1,0 +1,129 @@
+{
+  "app": {
+    "title": "Disactivity"
+  },
+  "search": {
+    "placeholder": "用名稱或ID搜尋遊戲...",
+    "button": "搜尋"
+  },
+  "actions": {
+    "refresh": "重新整理",
+    "run": "執行",
+    "stop": "停止"
+  },
+  "loading": {
+    "games": "正在從Discord載入遊戲..."
+  },
+  "favorites": {
+    "title": "最愛",
+    "add": "新增到最愛",
+    "remove": "從最愛移除"
+  },
+  "gameCard": {
+    "running": "執行中",
+    "executables": "執行檔",
+    "id": "ID"
+  },
+  "pagination": {
+    "previous": "上一頁",
+    "next": "下一頁",
+    "goToPage": "跳轉到頁數:",
+    "of": "/"
+  },
+  "footer": {
+    "favorite": "最愛",
+    "favorites": "最愛",
+    "showing": "顯示",
+    "game": "遊戲",
+    "games": "遊戲",
+    "page": "頁",
+    "noGames": "沒有遊戲顯示"
+  },
+  "emptyState": {
+    "noGamesFound": "找不到您搜尋的遊戲。"
+  },
+  "toast": {
+    "refreshed": {
+      "title": "重整完畢",
+      "description": "已從Discord API載入 {{count}} 個遊戲。"
+    },
+    "loadedFromCache": {
+      "title": "已從快取載入",
+      "description": "已從快取載入 {{count}} 個遊戲。"
+    },
+    "error": {
+      "title": "錯誤",
+      "fetchFailed": "取得遊戲失敗: {{error}}"
+    },
+    "cannotStartGame": {
+      "title": "無法啟動遊戲",
+      "noExecutables": "此遊戲沒有定義可執行檔名稱。"
+    },
+    "gameStarted": {
+      "title": "已啟動遊戲",
+      "description": "{{name}} 正在執行中。"
+    },
+    "failedToStartGame": {
+      "title": "無法啟動遊戲"
+    },
+    "gameStopped": {
+      "title": "遊戲已停止",
+      "description": "{{name}} 已停止。"
+    },
+    "failedToStopGame": {
+      "title": "無法停止遊戲"
+    },
+    "addedToFavorites": {
+      "title": "新增到最愛"
+    },
+    "removedFromFavorites": {
+      "title": "從最愛移除"
+    },
+    "failedToUpdateFavorites": {
+      "title": "無法更新最愛"
+    },
+    "updateAvailable": {
+      "title": "有更新！",
+      "description": "版本 {{version}} 可更新。 點擊更新按鈕以更新。"
+    },
+    "updateDownloading": {
+      "title": "正在下載更新...",
+      "description": "正在下載版本 {{version}} ({{progress}}%)"
+    },
+    "updateReady": {
+      "title": "更新已就緒",
+      "description": "版本 {{version}} 已下載完成。 重新啟動以套用。"
+    },
+    "updateInstalling": {
+      "title": "正在安裝更新...",
+      "description": "更新正在安裝中，請稍候片刻。"
+    },
+    "updateError": {
+      "title": "更新失敗",
+      "description": "無法更新: {{error}}"
+    },
+    "updateNoUpdates": {
+      "title": "沒有更新",
+      "description": "您的程式版本是最新的。"
+    },
+    "updateCheckFailed": {
+      "title": "檢查更新失敗",
+      "description": "無法檢查更新: {{error}}"
+    }
+  },
+  "theme": {
+    "toggleLight": "切換到淺色模式",
+    "toggleDark": "切換到深色模式"
+  },
+  "updater": {
+    "tooltip": "有更新 - 點擊以安裝",
+    "downloading": "正在下載...",
+    "restart": "重新啟動並更新"
+  },
+  "taskManager": {
+    "title": "執行中的遊戲",
+    "stopAll": "停止所有遊戲",
+    "noGames": "沒有執行中的遊戲"
+  }
+}
+
