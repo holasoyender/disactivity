@@ -266,9 +266,24 @@ export function TitleBar({ runningGames = new Map(), onStopGame }: TitleBarProps
         return "https://cdn.discordapp.com/embed/avatars/0.png"
     }
 
+    const handleDragStart = async (e: React.MouseEvent) => {
+        if (e.button !== 0) return
+        if (e.detail === 2) {
+            await handleMaximize()
+            return
+        }
+        try {
+            const window = getCurrentWindow()
+            await window.startDragging()
+        } catch {
+            // Native Tauri drag region handles dragging when startDragging is unnecessary
+        }
+    }
+
     return (
         <header
             data-tauri-drag-region
+            onMouseDown={handleDragStart}
             className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between h-10 px-4 bg-background/80 backdrop-blur-xl border-b border-border/50 select-none max-sm:px-2"
         >
             {/* Title */}
@@ -281,6 +296,7 @@ export function TitleBar({ runningGames = new Map(), onStopGame }: TitleBarProps
                 className="flex items-center gap-2 relative z-10 max-sm:gap-1"
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
+                onMouseDown={(e) => e.stopPropagation()}
                 style={{WebkitAppRegion: 'no-drag'} as React.CSSProperties}
             >
                 {/* Running Games Task Manager */}

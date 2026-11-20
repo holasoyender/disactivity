@@ -122,19 +122,12 @@ export default function GameLauncher() {
     }
 
     const handleStartGame = async (game: Game, selectedExecutable?: string) => {
-        if (!game.executables || game.executables.length === 0) {
-            toast.error(t("toast.cannotStartGame.title"), {
-                description: t("toast.cannotStartGame.noExecutables"),
-            })
-            return
-        }
-
         setLoadingGames((prev) => new Set(prev).add(game.id))
 
         try {
             await invoke<string>("start_game", {
                 gameId: game.id,
-                executables: game.executables,
+                executables: game.executables || [],
                 selectedExecutable: selectedExecutable || null,
             })
 
