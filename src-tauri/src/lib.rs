@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -15,7 +15,10 @@ const FAVORITES_FILE_NAME: &str = "disactivity_favorites.json";
 const CACHE_EXPIRY_DAYS: i64 = 2;
 
 // Embedded slave executable bytes (built in release mode)
+#[cfg(windows)]
 const SLAVE_EXE: &[u8] = include_bytes!("../slave/target/release/slave.exe");
+#[cfg(not(windows))]
+const SLAVE_EXE: &[u8] = include_bytes!("../slave/target/release/slave");
 
 /// Tracks a running game process
 struct RunningGame {
@@ -43,6 +46,7 @@ pub struct Game {
     pub icon_hash: Option<String>,
     #[serde(default)]
     pub executables: Option<Vec<Executable>>,
+    #[serde(default)]
     pub aliases: Vec<String>,
 }
 
@@ -70,6 +74,9 @@ fn read_cache() -> Option<CacheData> {
 
 fn write_cache(games: &[Game]) -> Result<(), String> {
     let cache_path = get_cache_path().ok_or("Could not determine cache directory")?;
+    if let Some(parent) = cache_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     let cache_data = CacheData {
         timestamp: Utc::now(),
         games: games.to_vec(),
@@ -148,11 +155,15 @@ async fn fetch_from_api() -> Result<Vec<Game>, String> {
         games.extend(non_games);
     }
 
-    Ok(games.iter().filter(|game| {
-        game.executables
-            .as_ref()
-            .map_or(false, |execs| !execs.is_empty())
-    }).cloned().collect())
+    Ok(games
+        .iter()
+        .filter(|game| {
+            game.executables
+                .as_ref()
+                .map_or(false, |execs| !execs.is_empty())
+        })
+        .cloned()
+        .collect())
 }
 
 #[tauri::command]
@@ -189,53 +200,69 @@ fn get_cache_info() -> Option<String> {
     Some(cache.timestamp.to_rfc3339())
 }
 
-/// Select the best executable for win32 platform
-/// Filters by os == "win32", excludes paths starting with ">", and picks shortest path
+/// Select the best executable for the current platform.
+/// On Linux, prefers `linux` executables and falls back to `win32` (Discord on Linux
+/// detects both native Linux paths and win32 executable paths via /proc/<pid>/cmdline).
 fn select_best_executable(executables: &[Executable]) -> Option<String> {
-    executables
-        .iter()
-        .filter(|exe| {
-            // Must be win32
-            exe.os.as_deref() == Some("win32")
-            // Must not start with ">" (which indicates "starts with" pattern)
-            && !exe.name.starts_with('>')
-        })
-        .min_by_key(|exe| {
-            // Pick the one with fewest path separators, then shortest length
-            let separators = exe.name.matches('/').count() + exe.name.matches('\\').count();
-            (separators, exe.name.len())
-        })
-        .map(|exe| exe.name.clone())
+    let pick_for_os = |target_os: &str| -> Option<String> {
+        executables
+            .iter()
+            .filter(|exe| exe.os.as_deref() == Some(target_os) && !exe.name.starts_with('>'))
+            .min_by_key(|exe| {
+                let separators = exe.name.matches('/').count() + exe.name.matches('\\').count();
+                (separators, exe.name.len())
+            })
+            .map(|exe| exe.name.clone())
+    };
+
+    #[cfg(target_os = "linux")]
+    {
+        pick_for_os("linux").or_else(|| pick_for_os("win32"))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        pick_for_os("darwin").or_else(|| pick_for_os("win32"))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        pick_for_os("win32")
+    }
 }
 
 /// Create the directory structure and place the slave executable
 fn setup_game_executable(game_id: &str, exe_path: &str) -> Result<(PathBuf, PathBuf), String> {
-    // Get system temp directory
     let temp_base = std::env::temp_dir().join("disactivity").join(game_id);
 
-    // Parse the executable path and create directory structure
-    // exe_path might be something like "path/to/game.exe" or just "game.exe"
-    let exe_path_normalized = exe_path.replace('\\', "/");
-    let path_parts: Vec<&str> = exe_path_normalized.split('/').collect();
+    // Normalize separators and sanitize relative path components
+    let cleaned = exe_path.trim().trim_matches('"').replace('\\', "/");
+    let path_parts: Vec<&str> = cleaned
+        .split('/')
+        .filter(|p| !p.is_empty() && *p != "." && *p != "..")
+        .collect();
 
-    // Create the full path including directories
-    let mut full_dir = temp_base.clone();
-    for part in &path_parts[..path_parts.len().saturating_sub(1)] {
-        if !part.is_empty() {
-            full_dir = full_dir.join(part);
-        }
+    if path_parts.is_empty() {
+        return Err("Invalid executable path".to_string());
     }
 
-    // Create all directories
+    let mut full_dir = temp_base.clone();
+    for part in &path_parts[..path_parts.len().saturating_sub(1)] {
+        full_dir = full_dir.join(part);
+    }
+
     fs::create_dir_all(&full_dir).map_err(|e| format!("Failed to create directories: {}", e))?;
 
-    // Get the executable filename
     let exe_filename = path_parts.last().ok_or("Invalid executable path")?;
     let final_exe_path = full_dir.join(exe_filename);
 
-    // Write the slave executable
     fs::write(&final_exe_path, SLAVE_EXE)
         .map_err(|e| format!("Failed to write executable: {}", e))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&final_exe_path, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Failed to set executable permissions: {}", e))?;
+    }
 
     Ok((temp_base, final_exe_path))
 }
@@ -255,7 +282,6 @@ fn start_game(
     selected_executable: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
-    // Check if game is already running
     {
         let running = state.running_games.lock().map_err(|e| e.to_string())?;
         if running.contains_key(&game_id) {
@@ -263,34 +289,32 @@ fn start_game(
         }
     }
 
-    // Use the selected executable if provided, otherwise auto-select the best one
     let exe_path = if let Some(selected) = selected_executable {
         selected
     } else {
         select_best_executable(&executables)
-            .ok_or("No suitable win32 executable found for this game")?
+            .ok_or("No suitable executable found for this game")?
     };
 
-    // Setup the executable in temp directory
     let (temp_dir, final_exe_path) = setup_game_executable(&game_id, &exe_path)?;
 
-    // Start the process
-    let process = Command::new(&final_exe_path)
-        .spawn()
-        .map_err(|e| {
-            // Cleanup on failure
-            let _ = cleanup_game(&temp_dir);
-            format!("Failed to start process: {}", e)
-        })?;
+    let mut cmd = Command::new(&final_exe_path);
+    #[cfg(unix)]
+    {
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+    }
 
-    // Store the running game
+    let process = cmd.spawn().map_err(|e| {
+        let _ = cleanup_game(&temp_dir);
+        format!("Failed to start process: {}", e)
+    })?;
+
     let mut running = state.running_games.lock().map_err(|e| e.to_string())?;
     running.insert(
         game_id.clone(),
-        RunningGame {
-            process,
-            temp_dir,
-        },
+        RunningGame { process, temp_dir },
     );
 
     Ok(final_exe_path.to_string_lossy().to_string())
@@ -301,11 +325,8 @@ fn stop_game(game_id: String, state: tauri::State<'_, AppState>) -> Result<(), S
     let mut running = state.running_games.lock().map_err(|e| e.to_string())?;
 
     if let Some(mut game) = running.remove(&game_id) {
-        // Kill the process
         let _ = game.process.kill();
         let _ = game.process.wait();
-
-        // Cleanup temp directory
         cleanup_game(&game.temp_dir)?;
     }
 
@@ -361,7 +382,6 @@ fn cleanup_all_games(state: &AppState) {
         }
     }
 
-    // Also cleanup the base disactivity temp directory if it exists
     let temp_base = std::env::temp_dir().join("disactivity");
     if temp_base.exists() {
         let _ = fs::remove_dir_all(&temp_base);
@@ -390,7 +410,6 @@ pub fn run() {
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                // Cleanup all games when window is closed
                 if let Some(state) = window.try_state::<AppState>() {
                     cleanup_all_games(state.inner());
                 }

@@ -73,10 +73,11 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
 
     const progress = Math.min((elapsed / FIFTEEN_MINUTES_MS) * 100, 100)
 
-    const win32Executables = (game.executables || []).filter(
-        (exe) => exe.os === "win32" && !exe.name.startsWith(">")
-    )
-    const hasMultipleExecutables = win32Executables.length > 1
+    const selectableExecutables = (game.executables || [])
+        .filter((exe) => (exe.os === "linux" || exe.os === "win32") && !exe.name.startsWith(">"))
+        .sort((a, b) => (a.os === "linux" ? 0 : 1) - (b.os === "linux" ? 0 : 1))
+    const isRpcOnly = selectableExecutables.length === 0
+    const hasDropdownOptions = selectableExecutables.length > 0
 
     const handleClick = () => {
         if (isRunning) {
@@ -113,6 +114,11 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
             <div className="flex-1 min-w-0 overflow-hidden">
                 <div className="flex items-center gap-2 min-w-0">
                     <h3 className="font-medium text-foreground truncate min-w-0 max-sm:text-sm">{game.name}</h3>
+                    {isRpcOnly && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary font-medium whitespace-nowrap shrink-0">
+                            RPC
+                        </span>
+                    )}
                     {isRunning && (
                         <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-500 font-medium whitespace-nowrap shrink-0 max-sm:text-[10px] max-sm:px-1">
                             {formatElapsedTime(elapsed)}
@@ -190,7 +196,7 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
                 <Button
                     size="sm"
                     onClick={handleClick}
-                    className={`shrink-0 max-sm:h-8 max-sm:px-2 ${!isRunning && hasMultipleExecutables ? "rounded-r-none" : ""}`}
+                    className={`shrink-0 max-sm:h-8 max-sm:px-2 ${!isRunning && hasDropdownOptions ? "rounded-r-none" : ""}`}
                     variant={isRunning ? "destructive" : "default"}
                     disabled={isLoading}
                 >
@@ -203,7 +209,7 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
                     )}
                     <span className="max-[420px]:hidden">{isRunning ? t("actions.stop") : t("actions.run")}</span>
                 </Button>
-                {!isRunning && hasMultipleExecutables && (
+                {!isRunning && hasDropdownOptions && (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button
@@ -216,15 +222,23 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="max-h-60 overflow-y-auto">
-                            {win32Executables.map((exe, idx) => (
+                            {selectableExecutables.map((exe, idx) => (
                                 <DropdownMenuItem
                                     key={idx}
                                     onClick={() => onStart(game, exe.name)}
-                                    className="text-xs font-mono cursor-pointer"
+                                    className="text-xs font-mono cursor-pointer flex items-center justify-between gap-2"
                                 >
-                                    {exe.name}
+                                    <span className="truncate">{exe.name}</span>
+                                    {exe.os && <span className="opacity-60 text-[10px] shrink-0">({exe.os})</span>}
                                 </DropdownMenuItem>
                             ))}
+                            <DropdownMenuItem
+                                onClick={() => onStart(game, "__discord_rpc__")}
+                                className="text-xs font-mono cursor-pointer flex items-center justify-between gap-2 text-primary"
+                            >
+                                <span className="truncate">Discord Rich Presence (IPC)</span>
+                                <span className="opacity-70 text-[10px] shrink-0">(rpc)</span>
+                            </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 )}
