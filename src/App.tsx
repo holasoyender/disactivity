@@ -122,7 +122,10 @@ export default function GameLauncher() {
     }
 
     const handleStartGame = async (game: Game, selectedExecutable?: string) => {
-        if (!game.executables || game.executables.length === 0) {
+        const steamSku = game.third_party_skus?.find((sku) => sku.distributor === "steam")
+        const steamAppId = Number(steamSku?.id || steamSku?.sku)
+        const useSteam = selectedExecutable === "__steam__" || !game.executables?.some((exe) => exe.os === "win32" && !exe.name.startsWith(">"))
+        if (useSteam && (!steamAppId || !Number.isSafeInteger(steamAppId))) {
             toast.error(t("toast.cannotStartGame.title"), {
                 description: t("toast.cannotStartGame.noExecutables"),
             })
@@ -132,10 +135,12 @@ export default function GameLauncher() {
         setLoadingGames((prev) => new Set(prev).add(game.id))
 
         try {
-            await invoke<string>("start_game", {
+            const startResult = await invoke<{ needs_discord_restart: boolean }>("start_game", {
                 gameId: game.id,
-                executables: game.executables,
-                selectedExecutable: selectedExecutable || null,
+                executables: game.executables || [],
+                selectedExecutable: selectedExecutable && selectedExecutable !== "__steam__" ? selectedExecutable : null,
+                steamAppId: useSteam ? steamAppId : null,
+                gameName: game.name,
             })
 
             setRunningGames((prev) => new Set(prev).add(game.id))
@@ -143,6 +148,12 @@ export default function GameLauncher() {
             toast.success(t("toast.gameStarted.title"), {
                 description: t("toast.gameStarted.description", { name: game.name }),
             })
+            if (useSteam && startResult.needs_discord_restart) {
+                toast.info(t("toast.steamRestart.title"), {
+                    description: t("toast.steamRestart.description"),
+                    duration: 10000,
+                })
+            }
         } catch (error) {
             toast.error(t("toast.failedToStartGame.title"), {
                 description: `${error}`,

@@ -22,7 +22,8 @@
   "gameCard": {
     "running": "Ejecutando",
     "executables": "Ejecutables",
-    "id": "ID"
+    "id": "ID",
+    "runViaSteam": "Ejecutar mediante biblioteca de Steam"
   },
   "pagination": {
     "previous": "Anterior",
@@ -62,6 +63,10 @@
     "gameStarted": {
       "title": "Juego iniciado",
       "description": "{{name}} se está ejecutando."
+    },
+    "steamRestart": {
+      "title": "Reinicia Discord para actualizar la detección de Steam",
+      "description": "Discord estaba abierto al registrar este juego. Reinícialo una vez para cargar la biblioteca de Steam actualizada."
     },
     "failedToStartGame": {
       "title": "Error al iniciar el juego"

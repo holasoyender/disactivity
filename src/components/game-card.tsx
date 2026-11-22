@@ -23,6 +23,7 @@ export interface Game {
     icon_hash: string
     executables?: Executable[] | null
     aliases?: string[] | null
+    third_party_skus?: { id?: string; sku?: string; distributor: string }[]
 }
 
 interface GameCardProps {
@@ -77,6 +78,8 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
         (exe) => exe.os === "win32" && !exe.name.startsWith(">")
     )
     const hasMultipleExecutables = win32Executables.length > 1
+    const hasSteamSku = game.third_party_skus?.some((sku) => sku.distributor === "steam" && (sku.id || sku.sku)) ?? false
+    const hasRunOptions = hasMultipleExecutables || (hasSteamSku && win32Executables.length > 0)
 
     const handleClick = () => {
         if (isRunning) {
@@ -190,7 +193,7 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
                 <Button
                     size="sm"
                     onClick={handleClick}
-                    className={`shrink-0 max-sm:h-8 max-sm:px-2 ${!isRunning && hasMultipleExecutables ? "rounded-r-none" : ""}`}
+                    className={`shrink-0 max-sm:h-8 max-sm:px-2 ${!isRunning && hasRunOptions ? "rounded-r-none" : ""}`}
                     variant={isRunning ? "destructive" : "default"}
                     disabled={isLoading}
                 >
@@ -203,7 +206,7 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
                     )}
                     <span className="max-[420px]:hidden">{isRunning ? t("actions.stop") : t("actions.run")}</span>
                 </Button>
-                {!isRunning && hasMultipleExecutables && (
+                {!isRunning && hasRunOptions && (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button
@@ -225,6 +228,14 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
                                     {exe.name}
                                 </DropdownMenuItem>
                             ))}
+                            {hasSteamSku && (
+                                <DropdownMenuItem
+                                    onClick={() => onStart(game, "__steam__")}
+                                    className="text-xs cursor-pointer"
+                                >
+                                    {t("gameCard.runViaSteam")}
+                                </DropdownMenuItem>
+                            )}
                         </DropdownMenuContent>
                     </DropdownMenu>
                 )}

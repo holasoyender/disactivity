@@ -34,6 +34,7 @@ The app fetches the complete list of detectable games directly from Discord's AP
 
 - 🎮 **Thousands of Games** - Browse and search through Discord's complete detectable games database
 - ⭐ **Favorites** - Mark your most-used games for quick access
+- 🧩 **Steam library detection** - Run catalog games through Steam App IDs when Discord has no executable rule
 - 🔄 **Auto-Updates** - Built-in updater to keep the app up to date (WIP)
 - 🌐 **Multi-language** - Available in English and Spanish
 
@@ -52,12 +53,14 @@ Download the latest version from the [GitHub Releases](https://github.com/holaso
 
 ### Technical Details
 
-Disactivity works by:
+For games with executable rules, Disactivity works by:
 1. Fetching the list of detectable games from Discord's API
 2. When you select a game, it creates a temporary executable with the same name as the game's actual executable
 3. Discord's game detection scans for running processes with known executable names
 4. Discord recognizes the process and displays the game activity on your profile
 5. When stopped, the temporary files are automatically cleaned up
+
+Games with a Steam SKU in Discord's catalog can also be run with **Run via Steam library**. Disactivity creates a temporary Steam app manifest and library index entry for games that are not installed. The process file is removed when stopped; the registration stays available until Disactivity closes so later runs do not require another Discord restart. For an already installed game, it places the temporary process in a reserved `_disactivity` subfolder and leaves the game's manifest and files intact. When a new Steam entry is registered, restart Discord once to reload its Steam library. Steam must be installed in a standard Windows location or registered in the current user's Steam registry key.
 
 ## 🔧 Building from Source
 
