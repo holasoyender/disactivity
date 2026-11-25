@@ -1,15 +1,26 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { invoke } from "@tauri-apps/api/core"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { Toaster } from "@/components/ui/sonner"
-import { Search, RefreshCw, Gamepad2, Loader2, Star } from "lucide-react"
+import { Search, RefreshCw, Gamepad2, Loader2, Star, ListVideo } from "lucide-react"
 import { GameCard, type Game } from "@/components/game-card"
 import { TitleBar } from "@/components/title-bar"
+import {
+    PlaylistPanel,
+    MAX_PLAYLIST_GAMES,
+    DEFAULT_PLAY_DURATION_MINUTES,
+    MIN_PLAY_DURATION_MINUTES,
+    MAX_PLAY_DURATION_MINUTES,
+    DEFAULT_BREAK_INTERVAL_MINUTES,
+    MIN_BREAK_INTERVAL_MINUTES,
+    MAX_BREAK_INTERVAL_MINUTES,
+    type PlaylistPhase,
+} from "@/components/playlist-panel"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
@@ -27,6 +38,49 @@ interface FetchGamesResponse {
     from_cache: boolean
 }
 
+interface PlaylistRunState {
+    phase: PlaylistPhase
+    currentGameId: string | null
+    phaseStartedAt: number | null
+    completedIds: string[]
+}
+
+const PLAYLIST_STORAGE_KEY = "disactivity_playlist"
+const PLAYLIST_PLAY_DURATION_KEY = "disactivity_playlist_play_minutes"
+const PLAYLIST_BREAK_INTERVAL_KEY = "disactivity_playlist_break_minutes"
+
+function loadStoredPlaylist(): string[] {
+    try {
+        const raw = localStorage.getItem(PLAYLIST_STORAGE_KEY)
+        if (!raw) return []
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return []
+        const unique = Array.from(new Set(parsed.filter((item): item is string => typeof item === "string")))
+        return unique.slice(0, MAX_PLAYLIST_GAMES)
+    } catch {
+        return []
+    }
+}
+
+function loadStoredMinutes(key: string, defaultVal: number, minVal: number, maxVal: number): number {
+    try {
+        const raw = localStorage.getItem(key)
+        if (!raw) return defaultVal
+        const parsed = parseInt(raw, 10)
+        if (isNaN(parsed)) return defaultVal
+        return Math.max(minVal, Math.min(maxVal, parsed))
+    } catch {
+        return defaultVal
+    }
+}
+
+const INITIAL_PLAYLIST_RUN: PlaylistRunState = {
+    phase: "idle",
+    currentGameId: null,
+    phaseStartedAt: null,
+    completedIds: [],
+}
+
 export default function GameLauncher() {
     const { t } = useTranslation()
     const [searchQuery, setSearchQuery] = useState("")
@@ -39,7 +93,70 @@ export default function GameLauncher() {
     const [loadingGames, setLoadingGames] = useState<Set<string>>(new Set())
     const [favorites, setFavorites] = useState<Set<string>>(new Set())
     const [gameStartTimes, setGameStartTimes] = useState<Map<string, number>>(new Map())
+
+    // Playlist state
+    const [playlistIds, setPlaylistIds] = useState<string[]>(() => loadStoredPlaylist())
+    const [playDurationMinutes, setPlayDurationMinutes] = useState<number>(() =>
+        loadStoredMinutes(
+            PLAYLIST_PLAY_DURATION_KEY,
+            DEFAULT_PLAY_DURATION_MINUTES,
+            MIN_PLAY_DURATION_MINUTES,
+            MAX_PLAY_DURATION_MINUTES
+        )
+    )
+    const [breakIntervalMinutes, setBreakIntervalMinutes] = useState<number>(() =>
+        loadStoredMinutes(
+            PLAYLIST_BREAK_INTERVAL_KEY,
+            DEFAULT_BREAK_INTERVAL_MINUTES,
+            MIN_BREAK_INTERVAL_MINUTES,
+            MAX_BREAK_INTERVAL_MINUTES
+        )
+    )
+    const [isPlaylistOpen, setIsPlaylistOpen] = useState<boolean>(() => loadStoredPlaylist().length > 0)
+    const [playlistRun, setPlaylistRun] = useState<PlaylistRunState>(INITIAL_PLAYLIST_RUN)
+
+    // Refs to keep async playlist transitions free of stale closures
+    const gamesRef = useRef<Game[]>(games)
+    const playlistIdsRef = useRef<string[]>(playlistIds)
+    const runningGamesRef = useRef<Set<string>>(runningGames)
+    const playlistRunRef = useRef<PlaylistRunState>(playlistRun)
+    const playDurationRef = useRef<number>(playDurationMinutes)
+    const breakIntervalRef = useRef<number>(breakIntervalMinutes)
+    const isTransitioningRef = useRef<boolean>(false)
+    const playlistSessionRef = useRef<number>(0)
+
+    gamesRef.current = games
+    playlistIdsRef.current = playlistIds
+    runningGamesRef.current = runningGames
+    playlistRunRef.current = playlistRun
+    playDurationRef.current = playDurationMinutes
+    breakIntervalRef.current = breakIntervalMinutes
+
     const ITEMS_PER_PAGE = 50
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(PLAYLIST_STORAGE_KEY, JSON.stringify(playlistIds))
+        } catch (error) {
+            console.error("Failed to persist playlist:", error)
+        }
+    }, [playlistIds])
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(PLAYLIST_PLAY_DURATION_KEY, String(playDurationMinutes))
+        } catch (error) {
+            console.error("Failed to persist play duration:", error)
+        }
+    }, [playDurationMinutes])
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(PLAYLIST_BREAK_INTERVAL_KEY, String(breakIntervalMinutes))
+        } catch (error) {
+            console.error("Failed to persist break interval:", error)
+        }
+    }, [breakIntervalMinutes])
 
     const fetchGames = async (forceRefresh: boolean = false) => {
         try {
@@ -121,84 +238,431 @@ export default function GameLauncher() {
         fetchGames(true).catch(console.error)
     }
 
+    const startGameInternal = useCallback(
+        async (game: Game, selectedExecutable?: string, options?: { silent?: boolean }): Promise<boolean> => {
+            const steamSku = game.third_party_skus?.find((sku) => sku.distributor === "steam")
+            const steamAppId = Number(steamSku?.id || steamSku?.sku)
+            const useSteam =
+                selectedExecutable === "__steam__" ||
+                !game.executables?.some((exe) => exe.os === "win32" && !exe.name.startsWith(">"))
+            if (useSteam && (!steamAppId || !Number.isSafeInteger(steamAppId))) {
+                if (!options?.silent) {
+                    toast.error(t("toast.cannotStartGame.title"), {
+                        description: t("toast.cannotStartGame.noExecutables"),
+                    })
+                }
+                return false
+            }
+
+            setLoadingGames((prev) => new Set(prev).add(game.id))
+
+            try {
+                const startResult = await invoke<{ needs_discord_restart: boolean }>("start_game", {
+                    gameId: game.id,
+                    executables: game.executables || [],
+                    selectedExecutable: selectedExecutable && selectedExecutable !== "__steam__" ? selectedExecutable : null,
+                    steamAppId: useSteam ? steamAppId : null,
+                    gameName: game.name,
+                })
+
+                const startedAt = Date.now()
+                setRunningGames((prev) => new Set(prev).add(game.id))
+                setGameStartTimes((prev) => new Map(prev).set(game.id, startedAt))
+
+                if (!options?.silent) {
+                    toast.success(t("toast.gameStarted.title"), {
+                        description: t("toast.gameStarted.description", { name: game.name }),
+                    })
+                }
+                if (useSteam && startResult.needs_discord_restart) {
+                    toast.info(t("toast.steamRestart.title"), {
+                        description: t("toast.steamRestart.description"),
+                        duration: 10000,
+                    })
+                }
+                return true
+            } catch (error) {
+                if (!options?.silent) {
+                    toast.error(t("toast.failedToStartGame.title"), {
+                        description: `${error}`,
+                    })
+                }
+                return false
+            } finally {
+                setLoadingGames((prev) => {
+                    const next = new Set(prev)
+                    next.delete(game.id)
+                    return next
+                })
+            }
+        },
+        [t]
+    )
+
+    const stopGameInternal = useCallback(
+        async (gameId: string, options?: { silent?: boolean }): Promise<boolean> => {
+            const game = gamesRef.current.find((g) => g.id === gameId)
+            setLoadingGames((prev) => new Set(prev).add(gameId))
+
+            try {
+                await invoke("stop_game", { gameId })
+
+                setRunningGames((prev) => {
+                    const next = new Set(prev)
+                    next.delete(gameId)
+                    return next
+                })
+                setGameStartTimes((prev) => {
+                    const next = new Map(prev)
+                    next.delete(gameId)
+                    return next
+                })
+                if (!options?.silent) {
+                    toast.success(t("toast.gameStopped.title"), {
+                        description: t("toast.gameStopped.description", { name: game?.name || "Game" }),
+                    })
+                }
+                return true
+            } catch (error) {
+                if (!options?.silent) {
+                    toast.error(t("toast.failedToStopGame.title"), {
+                        description: `${error}`,
+                    })
+                }
+                return false
+            } finally {
+                setLoadingGames((prev) => {
+                    const next = new Set(prev)
+                    next.delete(gameId)
+                    return next
+                })
+            }
+        },
+        [t]
+    )
+
     const handleStartGame = async (game: Game, selectedExecutable?: string) => {
-        const steamSku = game.third_party_skus?.find((sku) => sku.distributor === "steam")
-        const steamAppId = Number(steamSku?.id || steamSku?.sku)
-        const useSteam = selectedExecutable === "__steam__" || !game.executables?.some((exe) => exe.os === "win32" && !exe.name.startsWith(">"))
-        if (useSteam && (!steamAppId || !Number.isSafeInteger(steamAppId))) {
-            toast.error(t("toast.cannotStartGame.title"), {
-                description: t("toast.cannotStartGame.noExecutables"),
+        await startGameInternal(game, selectedExecutable)
+    }
+
+    const handleStopGame = async (gameId: string) => {
+        if (playlistRunRef.current.phase === "playing" && playlistRunRef.current.currentGameId === gameId) {
+            playlistSessionRef.current += 1
+            setPlaylistRun(INITIAL_PLAYLIST_RUN)
+        }
+        await stopGameInternal(gameId)
+    }
+
+    const startPlaylistFromIndex = useCallback(
+        async (
+            startIndex: number,
+            sessionId: number,
+            completedIds: string[],
+            options?: { isInitialStart?: boolean; queueIds?: string[] }
+        ) => {
+            const queueIds = options?.queueIds ?? playlistIdsRef.current
+            const validQueueGames = queueIds
+                .map((id) => gamesRef.current.find((g) => g.id === id))
+                .filter((g): g is Game => Boolean(g))
+
+            for (let idx = startIndex; idx < validQueueGames.length; idx++) {
+                if (playlistSessionRef.current !== sessionId) {
+                    return
+                }
+
+                const game = validQueueGames[idx]
+                const alreadyRunning = runningGamesRef.current.has(game.id)
+                let started = alreadyRunning
+
+                if (!alreadyRunning) {
+                    started = await startGameInternal(game, undefined, { silent: true })
+                }
+
+                // If user stopped the playlist while start_game was in flight, clean up the process we just spawned
+                if (playlistSessionRef.current !== sessionId) {
+                    if (!alreadyRunning && started) {
+                        await stopGameInternal(game.id, { silent: true })
+                    }
+                    return
+                }
+
+                if (started) {
+                    const startedAt = Date.now()
+                    setGameStartTimes((prev) => new Map(prev).set(game.id, startedAt))
+                    setPlaylistRun({
+                        phase: "playing",
+                        currentGameId: game.id,
+                        phaseStartedAt: startedAt,
+                        completedIds,
+                    })
+
+                    if (options?.isInitialStart && idx === startIndex) {
+                        toast.success(t("toast.playlistStarted.title"), {
+                            description: t("toast.playlistStarted.description", {
+                                count: validQueueGames.length,
+                                playMinutes: playDurationRef.current,
+                                breakMinutes: breakIntervalRef.current,
+                            }),
+                        })
+                    } else {
+                        toast.info(t("toast.playlistNext.title"), {
+                            description: t("toast.playlistNext.description", {
+                                name: game.name,
+                                current: idx + 1,
+                                total: validQueueGames.length,
+                            }),
+                        })
+                    }
+                    return
+                }
+
+                toast.warning(t("toast.playlistSkippedError.title"), {
+                    description: t("toast.playlistSkippedError.description", { name: game.name }),
+                })
+            }
+
+            if (playlistSessionRef.current !== sessionId) {
+                return
+            }
+
+            setPlaylistRun({
+                phase: "idle",
+                currentGameId: null,
+                phaseStartedAt: null,
+                completedIds,
+            })
+
+            if (completedIds.length > 0 || !options?.isInitialStart) {
+                toast.success(t("toast.playlistCompleted.title"), {
+                    description: t("toast.playlistCompleted.description", { count: validQueueGames.length }),
+                })
+            }
+        },
+        [startGameInternal, stopGameInternal, t]
+    )
+
+    const advancePlaylist = useCallback(
+        async (options?: { skipBreak?: boolean }) => {
+            if (isTransitioningRef.current || playlistRunRef.current.phase === "idle") return
+            isTransitioningRef.current = true
+            const sessionId = playlistSessionRef.current
+
+            try {
+                const { phase, currentGameId, completedIds } = playlistRunRef.current
+                const validGames = playlistIdsRef.current
+                    .map((id) => gamesRef.current.find((g) => g.id === id))
+                    .filter((g): g is Game => Boolean(g))
+                const currentIdx = currentGameId ? validGames.findIndex((g) => g.id === currentGameId) : -1
+
+                // If currently on break, start the upcoming game immediately
+                if (phase === "break") {
+                    const startIdx = currentIdx >= 0 ? currentIdx : 0
+                    await startPlaylistFromIndex(startIdx, sessionId, completedIds)
+                    return
+                }
+
+                // Currently playing: stop current game first
+                if (currentGameId && runningGamesRef.current.has(currentGameId)) {
+                    await stopGameInternal(currentGameId, { silent: true })
+                }
+
+                if (playlistSessionRef.current !== sessionId) {
+                    return
+                }
+
+                const updatedCompleted =
+                    currentGameId && !completedIds.includes(currentGameId)
+                        ? [...completedIds, currentGameId]
+                        : completedIds
+
+                const nextIdx = currentIdx + 1
+                if (nextIdx >= validGames.length) {
+                    setPlaylistRun({
+                        phase: "idle",
+                        currentGameId: null,
+                        phaseStartedAt: null,
+                        completedIds: updatedCompleted,
+                    })
+                    toast.success(t("toast.playlistCompleted.title"), {
+                        description: t("toast.playlistCompleted.description", { count: validGames.length }),
+                    })
+                    return
+                }
+
+                // Enter break phase if break interval > 0 and user did not manually skip
+                if (!options?.skipBreak && breakIntervalRef.current > 0) {
+                    const nextGame = validGames[nextIdx]
+                    setPlaylistRun({
+                        phase: "break",
+                        currentGameId: nextGame.id,
+                        phaseStartedAt: Date.now(),
+                        completedIds: updatedCompleted,
+                    })
+                    toast.info(t("toast.playlistBreak.title"), {
+                        description: t("toast.playlistBreak.description", {
+                            minutes: breakIntervalRef.current,
+                            name: nextGame.name,
+                        }),
+                    })
+                    return
+                }
+
+                await startPlaylistFromIndex(nextIdx, sessionId, updatedCompleted)
+            } finally {
+                isTransitioningRef.current = false
+            }
+        },
+        [startPlaylistFromIndex, stopGameInternal, t]
+    )
+
+    const handleStartPlaylist = async () => {
+        if (isTransitioningRef.current) return
+        const validIds = playlistIdsRef.current.filter((id) => gamesRef.current.some((g) => g.id === id))
+        if (validIds.length === 0) return
+
+        isTransitioningRef.current = true
+        const sessionId = ++playlistSessionRef.current
+
+        try {
+            await startPlaylistFromIndex(0, sessionId, [], { isInitialStart: true, queueIds: validIds })
+        } finally {
+            isTransitioningRef.current = false
+        }
+    }
+
+    const handleStopPlaylist = async () => {
+        playlistSessionRef.current += 1
+        const { phase, currentGameId } = playlistRunRef.current
+        setPlaylistRun(INITIAL_PLAYLIST_RUN)
+
+        if (phase === "playing" && currentGameId && runningGamesRef.current.has(currentGameId)) {
+            await stopGameInternal(currentGameId, { silent: true })
+        }
+
+        toast.info(t("toast.playlistStopped.title"), {
+            description: t("toast.playlistStopped.description"),
+        })
+    }
+
+    const handleSkipPlaylistGame = () => {
+        advancePlaylist({ skipBreak: true }).catch(console.error)
+    }
+
+    const handleTogglePlaylistGame = (gameId: string) => {
+        const game = games.find((g) => g.id === gameId)
+
+        if (playlistIds.includes(gameId)) {
+            handleRemoveFromPlaylist(gameId)
+            return
+        }
+
+        if (playlistIds.length >= MAX_PLAYLIST_GAMES) {
+            toast.warning(t("toast.playlistFull.title"), {
+                description: t("toast.playlistFull.description", { max: MAX_PLAYLIST_GAMES }),
             })
             return
         }
 
-        setLoadingGames((prev) => new Set(prev).add(game.id))
-
-        try {
-            const startResult = await invoke<{ needs_discord_restart: boolean }>("start_game", {
-                gameId: game.id,
-                executables: game.executables || [],
-                selectedExecutable: selectedExecutable && selectedExecutable !== "__steam__" ? selectedExecutable : null,
-                steamAppId: useSteam ? steamAppId : null,
-                gameName: game.name,
-            })
-
-            setRunningGames((prev) => new Set(prev).add(game.id))
-            setGameStartTimes((prev) => new Map(prev).set(game.id, Date.now()))
-            toast.success(t("toast.gameStarted.title"), {
-                description: t("toast.gameStarted.description", { name: game.name }),
-            })
-            if (useSteam && startResult.needs_discord_restart) {
-                toast.info(t("toast.steamRestart.title"), {
-                    description: t("toast.steamRestart.description"),
-                    duration: 10000,
-                })
-            }
-        } catch (error) {
-            toast.error(t("toast.failedToStartGame.title"), {
-                description: `${error}`,
-            })
-        } finally {
-            setLoadingGames((prev) => {
-                const next = new Set(prev)
-                next.delete(game.id)
-                return next
-            })
+        setPlaylistIds((prev) => [...prev, gameId])
+        if (playlistIds.length === 0) {
+            setIsPlaylistOpen(true)
         }
+        toast.success(t("toast.addedToPlaylist.title"), {
+            description: game?.name || gameId,
+        })
     }
 
-    const handleStopGame = async (gameId: string) => {
+    const handleRemoveFromPlaylist = (gameId: string) => {
         const game = games.find((g) => g.id === gameId)
-        setLoadingGames((prev) => new Set(prev).add(gameId))
+        const prevValidIds = playlistIdsRef.current.filter((id) => gamesRef.current.some((g) => g.id === id))
+        const removedValidIndex = prevValidIds.indexOf(gameId)
+        const nextIds = playlistIdsRef.current.filter((id) => id !== gameId)
 
-        try {
-            await invoke("stop_game", { gameId })
+        setPlaylistIds(nextIds)
+        toast.info(t("toast.removedFromPlaylist.title"), {
+            description: game?.name || gameId,
+        })
 
-            setRunningGames((prev) => {
-                const next = new Set(prev)
-                next.delete(gameId)
-                return next
-            })
-            setGameStartTimes((prev) => {
-                const next = new Map(prev)
-                next.delete(gameId)
-                return next
-            })
-            toast.success(t("toast.gameStopped.title"), {
-                description: t("toast.gameStopped.description", { name: game?.name || "Game" }),
-            })
-        } catch (error) {
-            toast.error(t("toast.failedToStopGame.title"), {
-                description: `${error}`,
-            })
-        } finally {
-            setLoadingGames((prev) => {
-                const next = new Set(prev)
-                next.delete(gameId)
-                return next
-            })
+        const { phase, currentGameId, phaseStartedAt, completedIds } = playlistRunRef.current
+        if (phase === "idle" || currentGameId !== gameId) {
+            return
         }
+
+        const remainingValid = nextIds.filter((id) => gamesRef.current.some((g) => g.id === id))
+        const filteredCompleted = completedIds.filter((id) => id !== gameId)
+
+        if (phase === "break") {
+            if (removedValidIndex < remainingValid.length && remainingValid.length > 0) {
+                setPlaylistRun({
+                    phase: "break",
+                    currentGameId: remainingValid[removedValidIndex],
+                    phaseStartedAt,
+                    completedIds: filteredCompleted,
+                })
+            } else {
+                playlistSessionRef.current += 1
+                setPlaylistRun(INITIAL_PLAYLIST_RUN)
+            }
+            return
+        }
+
+        // Removed currently playing game: stop it and advance to the next remaining game
+        const sessionId = ++playlistSessionRef.current
+        ;(async () => {
+            isTransitioningRef.current = true
+            try {
+                if (runningGamesRef.current.has(gameId)) {
+                    await stopGameInternal(gameId, { silent: true })
+                }
+                if (playlistSessionRef.current !== sessionId) return
+                if (remainingValid.length === 0 || removedValidIndex >= remainingValid.length) {
+                    setPlaylistRun(INITIAL_PLAYLIST_RUN)
+                    return
+                }
+                await startPlaylistFromIndex(removedValidIndex, sessionId, filteredCompleted, {
+                    queueIds: remainingValid,
+                })
+            } finally {
+                isTransitioningRef.current = false
+            }
+        })().catch(console.error)
     }
+
+    const handleClearPlaylist = () => {
+        if (playlistRunRef.current.phase !== "idle") return
+        setPlaylistIds([])
+        setPlaylistRun(INITIAL_PLAYLIST_RUN)
+    }
+
+    const handleMovePlaylistItem = (index: number, direction: -1 | 1) => {
+        setPlaylistIds((prev) => {
+            const validIds = prev.filter((id) => gamesRef.current.some((g) => g.id === id))
+            const targetIndex = index + direction
+            if (index < 0 || targetIndex < 0 || index >= validIds.length || targetIndex >= validIds.length) {
+                return prev
+            }
+            const next = [...validIds]
+            ;[next[index], next[targetIndex]] = [next[targetIndex], next[index]]
+            return next
+        })
+    }
+
+    // Automatic timer to transition between playing and break phases
+    useEffect(() => {
+        if (playlistRun.phase === "idle" || !playlistRun.phaseStartedAt) return
+
+        const interval = setInterval(() => {
+            const { phase, phaseStartedAt } = playlistRunRef.current
+            if (phase === "idle" || !phaseStartedAt || isTransitioningRef.current) return
+            const targetMs =
+                (phase === "break" ? breakIntervalRef.current : playDurationRef.current) * 60 * 1000
+            if (Date.now() - phaseStartedAt >= targetMs) {
+                advancePlaylist().catch(console.error)
+            }
+        }, 1000)
+
+        return () => clearInterval(interval)
+    }, [playlistRun.phase, playlistRun.phaseStartedAt, advancePlaylist])
 
     const handleToggleFavorite = async (gameId: string) => {
         try {
@@ -222,6 +686,23 @@ export default function GameLauncher() {
             })
         }
     }
+
+    // Resolve playlist Game objects in queue order
+    const playlistGames = useMemo(() => {
+        const gameMap = new Map(games.map((g) => [g.id, g]))
+        return playlistIds.map((id) => gameMap.get(id)).filter((g): g is Game => Boolean(g))
+    }, [games, playlistIds])
+
+    const playlistIndexMap = useMemo(() => {
+        const map = new Map<string, number>()
+        playlistGames.forEach((game, idx) => map.set(game.id, idx))
+        return map
+    }, [playlistGames])
+
+    const completedPlaylistIds = useMemo(() => new Set(playlistRun.completedIds), [playlistRun.completedIds])
+    const isPlaylistFull = playlistGames.length >= MAX_PLAYLIST_GAMES
+    const isPlaylistActive = playlistRun.phase !== "idle"
+    const playlistTargetMs = playDurationMinutes * 60 * 1000
 
     // Separate favorites and non-favorites from filtered games
     const { favoriteGames, nonFavoriteGames } = useMemo(() => {
@@ -262,7 +743,7 @@ export default function GameLauncher() {
 
     // Create a map of running games info for the TitleBar task manager
     const runningGamesInfo = useMemo(() => {
-        const map = new Map<string, { game: Game; isLoading: boolean; startTime: number }>()
+        const map = new Map<string, { game: Game; isLoading: boolean; startTime: number; targetDurationMs?: number }>()
         runningGames.forEach((gameId) => {
             const game = games.find((g) => g.id === gameId)
             if (game) {
@@ -270,11 +751,15 @@ export default function GameLauncher() {
                     game,
                     isLoading: loadingGames.has(gameId),
                     startTime: gameStartTimes.get(gameId) || Date.now(),
+                    targetDurationMs:
+                        playlistRun.phase === "playing" && playlistRun.currentGameId === gameId
+                            ? playlistTargetMs
+                            : undefined,
                 })
             }
         })
         return map
-    }, [runningGames, loadingGames, games, gameStartTimes])
+    }, [runningGames, loadingGames, games, gameStartTimes, playlistRun.phase, playlistRun.currentGameId, playlistTargetMs])
 
     return (
         <div className="h-screen flex flex-col bg-background/90 dark:bg-background/80 backdrop-blur-xl font-sans antialiased overflow-hidden">
@@ -297,6 +782,33 @@ export default function GameLauncher() {
                                 disabled={isLoading}
                             />
                         </div>
+                        <Button
+                            variant={isPlaylistOpen ? "secondary" : "outline"}
+                            onClick={() => setIsPlaylistOpen((prev) => !prev)}
+                            disabled={isLoading}
+                            className="bg-background whitespace-nowrap max-sm:h-9 max-sm:px-2 max-sm:text-xs"
+                        >
+                            <ListVideo
+                                className={`h-4 w-4 mr-1.5 ${
+                                    playlistRun.phase === "playing"
+                                        ? "text-green-500"
+                                        : playlistRun.phase === "break"
+                                            ? "text-amber-500"
+                                            : ""
+                                }`}
+                            />
+                            {t("playlist.toggle")}
+                            <span className="ml-1 text-xs text-muted-foreground">
+                                ({playlistGames.length}/{MAX_PLAYLIST_GAMES})
+                            </span>
+                            {isPlaylistActive && (
+                                <span
+                                    className={`ml-1.5 h-2 w-2 rounded-full animate-pulse ${
+                                        playlistRun.phase === "break" ? "bg-amber-500" : "bg-green-500"
+                                    }`}
+                                />
+                            )}
+                        </Button>
                         <Button variant="outline" onClick={handleRefresh} disabled={isLoading || isRefreshing} className="bg-background whitespace-nowrap max-sm:h-9 max-sm:px-2 max-sm:text-xs">
                             {isRefreshing ? (
                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -315,6 +827,31 @@ export default function GameLauncher() {
                         </div>
                     ) : (
                         <>
+                            {/* Playlist Section */}
+                            {isPlaylistOpen && (
+                                <>
+                                    <PlaylistPanel
+                                        games={playlistGames}
+                                        playDurationMinutes={playDurationMinutes}
+                                        breakIntervalMinutes={breakIntervalMinutes}
+                                        phase={playlistRun.phase}
+                                        currentGameId={playlistRun.currentGameId}
+                                        phaseStartedAt={playlistRun.phaseStartedAt}
+                                        completedIds={completedPlaylistIds}
+                                        loadingGames={loadingGames}
+                                        onPlayDurationChange={setPlayDurationMinutes}
+                                        onBreakIntervalChange={setBreakIntervalMinutes}
+                                        onStart={handleStartPlaylist}
+                                        onStop={handleStopPlaylist}
+                                        onSkip={handleSkipPlaylistGame}
+                                        onClear={handleClearPlaylist}
+                                        onRemove={handleRemoveFromPlaylist}
+                                        onMove={handleMovePlaylistItem}
+                                    />
+                                    <Separator className="my-4" />
+                                </>
+                            )}
+
                             {/* Favorites Section */}
                             {favoriteGames.length > 0 && (
                                 <div className="mb-4">
@@ -331,10 +868,20 @@ export default function GameLauncher() {
                                                 isRunning={runningGames.has(game.id)}
                                                 isLoading={loadingGames.has(game.id)}
                                                 isFavorite={true}
+                                                isInPlaylist={playlistIndexMap.has(game.id)}
+                                                playlistIndex={playlistIndexMap.get(game.id)}
+                                                isPlaylistFull={isPlaylistFull}
+                                                maxPlaylistGames={MAX_PLAYLIST_GAMES}
                                                 startTime={gameStartTimes.get(game.id)}
+                                                targetDurationMs={
+                                                    playlistRun.phase === "playing" && playlistRun.currentGameId === game.id
+                                                        ? playlistTargetMs
+                                                        : undefined
+                                                }
                                                 onStart={handleStartGame}
                                                 onStop={handleStopGame}
                                                 onToggleFavorite={handleToggleFavorite}
+                                                onTogglePlaylist={handleTogglePlaylistGame}
                                             />
                                         ))}
                                     </div>
@@ -352,10 +899,20 @@ export default function GameLauncher() {
                                             isRunning={runningGames.has(game.id)}
                                             isLoading={loadingGames.has(game.id)}
                                             isFavorite={favorites.has(game.id)}
+                                            isInPlaylist={playlistIndexMap.has(game.id)}
+                                            playlistIndex={playlistIndexMap.get(game.id)}
+                                            isPlaylistFull={isPlaylistFull}
+                                            maxPlaylistGames={MAX_PLAYLIST_GAMES}
                                             startTime={gameStartTimes.get(game.id)}
+                                            targetDurationMs={
+                                                playlistRun.phase === "playing" && playlistRun.currentGameId === game.id
+                                                    ? playlistTargetMs
+                                                    : undefined
+                                            }
                                             onStart={handleStartGame}
                                             onStop={handleStopGame}
                                             onToggleFavorite={handleToggleFavorite}
+                                            onTogglePlaylist={handleTogglePlaylistGame}
                                         />
                                     ))
                                 ) : filteredGames.length === 0 ? (

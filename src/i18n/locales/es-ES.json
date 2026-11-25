@@ -19,6 +19,31 @@
     "add": "Añadir a favoritos",
     "remove": "Quitar de favoritos"
   },
+  "playlist": {
+    "title": "Lista de reproducción",
+    "toggle": "Lista",
+    "add": "Añadir a la lista de reproducción",
+    "remove": "Quitar de la lista de reproducción",
+    "full": "Lista llena (máx. {{max}} juegos)",
+    "empty": "Aún no hay juegos en la lista. Añade hasta {{max}} juegos usando el botón de lista en cualquier juego.",
+    "playDurationLabel": "Tiempo de juego",
+    "breakIntervalLabel": "Intervalo entre juegos",
+    "minutesShort": "min",
+    "start": "Iniciar",
+    "stop": "Detener",
+    "skip": "Siguiente juego",
+    "skipBreak": "Iniciar siguiente ahora",
+    "clear": "Limpiar",
+    "moveUp": "Subir",
+    "moveDown": "Bajar",
+    "playing": "Ejecutando",
+    "upNext": "Siguiente",
+    "breakStatus": "Pausa — siguiente: {{name}}",
+    "completed": "Completado",
+    "queued": "En cola",
+    "remaining": "{{time}} restantes",
+    "progress": "{{current}} de {{total}}"
+  },
   "gameCard": {
     "running": "Ejecutando",
     "executables": "Ejecutables",
@@ -86,6 +111,40 @@
     },
     "failedToUpdateFavorites": {
       "title": "Error al actualizar favoritos"
+    },
+    "addedToPlaylist": {
+      "title": "Añadido a la lista de reproducción"
+    },
+    "removedFromPlaylist": {
+      "title": "Quitado de la lista de reproducción"
+    },
+    "playlistFull": {
+      "title": "Lista de reproducción llena",
+      "description": "Puedes añadir hasta {{max}} juegos a la lista."
+    },
+    "playlistStarted": {
+      "title": "Lista de reproducción iniciada",
+      "description": "Ejecutando {{count}} juegos ({{playMinutes}} min cada uno, {{breakMinutes}} min de pausa)."
+    },
+    "playlistBreak": {
+      "title": "Intervalo entre juegos",
+      "description": "Esperando {{minutes}} min antes de iniciar {{name}}."
+    },
+    "playlistNext": {
+      "title": "Siguiente juego en la lista",
+      "description": "Ejecutando ahora {{name}} ({{current}}/{{total}})."
+    },
+    "playlistStopped": {
+      "title": "Lista de reproducción detenida",
+      "description": "Se ha detenido la reproducción de la lista."
+    },
+    "playlistCompleted": {
+      "title": "Lista de reproducción completada",
+      "description": "Se terminaron de ejecutar todos los {{count}} juegos de la lista."
+    },
+    "playlistSkippedError": {
+      "title": "Juego omitido en la lista",
+      "description": "No se pudo iniciar {{name}}. Pasando al siguiente juego."
     },
     "updateAvailable": {
       "title": "¡Actualización disponible!",
