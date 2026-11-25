@@ -34,10 +34,10 @@ The app fetches the complete list of detectable games directly from Discord's AP
 
 - 🎮 **Thousands of Games** - Browse and search through Discord's complete detectable games database
 - ⭐ **Favorites** - Mark your most-used games for quick access
-- 🔁 **Game Playlist** - Queue up to 10 games to run automatically in sequence with configurable play duration (default 15 minutes) and break interval between games (default 5 minutes)
+- 🔁 **Game Playlist** - Queue up to 10 games to run automatically in sequence with configurable play duration 
 - 🧩 **Steam library detection** - Run catalog games through Steam App IDs when Discord has no executable rule
 - 🔄 **Auto-Updates** - Built-in updater to keep the app up to date (WIP)
-- 🌐 **Multi-language** - Available in English, Spanish, and Brazilian Portuguese (auto-detected from system language)
+- 🌐 **Multi-language** - Available in English, Spanish, and Brazilian Portuguese
 
 ## 📥 Download
 
