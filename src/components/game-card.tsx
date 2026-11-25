@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
-import { Info, Play, Square, Loader2, Star, ChevronDown } from "lucide-react"
+import { Info, Play, Square, Loader2, Star, ChevronDown, ListPlus, ListCheck } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
     DropdownMenu,
@@ -31,10 +31,16 @@ interface GameCardProps {
     isRunning: boolean
     isLoading: boolean
     isFavorite: boolean
+    isInPlaylist?: boolean
+    playlistIndex?: number
+    isPlaylistFull?: boolean
+    maxPlaylistGames?: number
     startTime?: number
+    targetDurationMs?: number
     onStart: (game: Game, selectedExecutable?: string) => void
     onStop: (gameId: string) => void
     onToggleFavorite: (gameId: string) => void
+    onTogglePlaylist?: (gameId: string) => void
 }
 
 function getGameIconUrl(game: Game, size: number = 64): string {
@@ -56,7 +62,22 @@ function formatElapsedTime(ms: number): string {
     return `${pad(minutes)}:${pad(seconds)}`
 }
 
-export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, onStart, onStop, onToggleFavorite }: GameCardProps) {
+export function GameCard({
+    game,
+    isRunning,
+    isLoading,
+    isFavorite,
+    isInPlaylist = false,
+    playlistIndex,
+    isPlaylistFull = false,
+    maxPlaylistGames = 10,
+    startTime,
+    targetDurationMs = FIFTEEN_MINUTES_MS,
+    onStart,
+    onStop,
+    onToggleFavorite,
+    onTogglePlaylist,
+}: GameCardProps) {
     const { t } = useTranslation()
     const [elapsed, setElapsed] = useState(0)
 
@@ -72,7 +93,7 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
         return () => clearInterval(interval)
     }, [isRunning, startTime])
 
-    const progress = Math.min((elapsed / FIFTEEN_MINUTES_MS) * 100, 100)
+    const progress = Math.min((elapsed / targetDurationMs) * 100, 100)
 
     const win32Executables = (game.executables || []).filter(
         (exe) => exe.os === "win32" && !exe.name.startsWith(">")
@@ -116,6 +137,11 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
             <div className="flex-1 min-w-0 overflow-hidden">
                 <div className="flex items-center gap-2 min-w-0">
                     <h3 className="font-medium text-foreground truncate min-w-0 max-sm:text-sm">{game.name}</h3>
+                    {isInPlaylist && playlistIndex !== undefined && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-primary/15 text-primary font-medium whitespace-nowrap shrink-0 max-sm:text-[10px] max-sm:px-1">
+                            #{playlistIndex + 1}
+                        </span>
+                    )}
                     {isRunning && (
                         <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-500 font-medium whitespace-nowrap shrink-0 max-sm:text-[10px] max-sm:px-1">
                             {formatElapsedTime(elapsed)}
@@ -159,11 +185,46 @@ export function GameCard({ game, isRunning, isLoading, isFavorite, startTime, on
                             />
                         </div>
                         <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0 max-sm:hidden">
-                            {formatElapsedTime(elapsed)} / 15:00
+                            {formatElapsedTime(elapsed)} / {formatElapsedTime(targetDurationMs)}
                         </span>
                     </div>
                 )}
             </div>
+
+            {onTogglePlaylist && (
+                <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                size="icon"
+                                variant="ghost"
+                                className="shrink-0 h-8 w-8 max-sm:h-7 max-sm:w-7"
+                                onClick={() => onTogglePlaylist(game.id)}
+                                aria-label={isInPlaylist ? t("playlist.remove") : t("playlist.add")}
+                            >
+                                {isInPlaylist ? (
+                                    <ListCheck className="h-4 w-4 text-primary transition-colors" />
+                                ) : (
+                                    <ListPlus
+                                        className={`h-4 w-4 transition-colors ${
+                                            isPlaylistFull
+                                                ? "text-muted-foreground/40"
+                                                : "text-muted-foreground hover:text-primary"
+                                        }`}
+                                    />
+                                )}
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                            {isInPlaylist
+                                ? t("playlist.remove")
+                                : isPlaylistFull
+                                    ? t("playlist.full", { max: maxPlaylistGames })
+                                    : t("playlist.add")}
+                        </TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
+            )}
 
             <TooltipProvider delayDuration={200}>
                 <Tooltip>

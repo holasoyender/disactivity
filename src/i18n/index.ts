@@ -4,13 +4,16 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 
 import enUS from './locales/en-US.json';
 import esES from './locales/es-ES.json';
+import ptBR from './locales/pt-BR.json';
 
 const resources = {
   'en-US': { translation: enUS },
   'es-ES': { translation: esES },
+  'pt-BR': { translation: ptBR },
   // Fallback mappings for base language codes
   'en': { translation: enUS },
   'es': { translation: esES },
+  'pt': { translation: ptBR },
 };
 
 i18n
@@ -19,7 +22,7 @@ i18n
   .init({
     resources,
     fallbackLng: 'en-US',
-    supportedLngs: ['en-US', 'es-ES', 'en', 'es'],
+    supportedLngs: ['en-US', 'es-ES', 'pt-BR', 'en', 'es', 'pt'],
     interpolation: {
       escapeValue: false, // React already escapes values
     },

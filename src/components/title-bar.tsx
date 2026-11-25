@@ -37,6 +37,7 @@ interface RunningGameInfo {
     game: Game
     isLoading: boolean
     startTime: number
+    targetDurationMs?: number
 }
 
 interface TitleBarProps {
@@ -298,9 +299,10 @@ export function TitleBar({ runningGames = new Map(), onStopGame }: TitleBarProps
                                 {t("taskManager.title")}
                             </DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            {runningGamesArray.map(({ game, isLoading, startTime }) => {
+                            {runningGamesArray.map(({ game, isLoading, startTime, targetDurationMs }) => {
+                                const targetMs = targetDurationMs ?? (15 * 60 * 1000)
                                 const elapsed = Date.now() - startTime
-                                const progress = Math.min((elapsed / (15 * 60 * 1000)) * 100, 100)
+                                const progress = Math.min((elapsed / targetMs) * 100, 100)
                                 return (
                                 <DropdownMenuItem
                                     key={game.id}
@@ -319,7 +321,7 @@ export function TitleBar({ runningGames = new Map(), onStopGame }: TitleBarProps
                                         <p className="text-sm font-medium truncate">{game.name}</p>
                                         <div className="flex items-center gap-1.5">
                                             <span className="text-xs text-green-500 font-medium">{formatElapsedTime(elapsed)}</span>
-                                            <span className="text-[10px] text-muted-foreground">/ 15:00</span>
+                                            <span className="text-[10px] text-muted-foreground">/ {formatElapsedTime(targetMs)}</span>
                                         </div>
                                         <div className="mt-1 h-1 rounded-full bg-muted/50 overflow-hidden">
                                             <div

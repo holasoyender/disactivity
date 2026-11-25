@@ -19,6 +19,31 @@
     "add": "Add to favorites",
     "remove": "Remove from favorites"
   },
+  "playlist": {
+    "title": "Playlist",
+    "toggle": "Playlist",
+    "add": "Add to playlist",
+    "remove": "Remove from playlist",
+    "full": "Playlist is full (max {{max}} games)",
+    "empty": "No games in the playlist yet. Add up to {{max}} games using the playlist button on any game card.",
+    "playDurationLabel": "Play time per game",
+    "breakIntervalLabel": "Break between games",
+    "minutesShort": "min",
+    "start": "Start",
+    "stop": "Stop",
+    "skip": "Next game",
+    "skipBreak": "Start next now",
+    "clear": "Clear",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "playing": "Playing",
+    "upNext": "Up next",
+    "breakStatus": "Break — next: {{name}}",
+    "completed": "Completed",
+    "queued": "Queued",
+    "remaining": "{{time}} remaining",
+    "progress": "{{current}} of {{total}}"
+  },
   "gameCard": {
     "running": "Running",
     "executables": "Executables",
@@ -86,6 +111,40 @@
     },
     "failedToUpdateFavorites": {
       "title": "Failed to update favorites"
+    },
+    "addedToPlaylist": {
+      "title": "Added to playlist"
+    },
+    "removedFromPlaylist": {
+      "title": "Removed from playlist"
+    },
+    "playlistFull": {
+      "title": "Playlist is full",
+      "description": "You can add up to {{max}} games to the playlist."
+    },
+    "playlistStarted": {
+      "title": "Playlist started",
+      "description": "Running {{count}} games ({{playMinutes}} min each, {{breakMinutes}} min break)."
+    },
+    "playlistBreak": {
+      "title": "Break between games",
+      "description": "Waiting {{minutes}} min before starting {{name}}."
+    },
+    "playlistNext": {
+      "title": "Next game in playlist",
+      "description": "Now running {{name}} ({{current}}/{{total}})."
+    },
+    "playlistStopped": {
+      "title": "Playlist stopped",
+      "description": "The playlist playback has been stopped."
+    },
+    "playlistCompleted": {
+      "title": "Playlist completed",
+      "description": "Finished running all {{count}} games in the playlist."
+    },
+    "playlistSkippedError": {
+      "title": "Skipped game in playlist",
+      "description": "Could not start {{name}}. Moving to the next game."
     },
     "updateAvailable": {
       "title": "Update available!",
