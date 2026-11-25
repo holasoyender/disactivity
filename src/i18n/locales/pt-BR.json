@@ -1,0 +1,192 @@
+{
+  "app": {
+    "title": "Disactivity"
+  },
+  "search": {
+    "placeholder": "Buscar jogos por nome ou ID...",
+    "button": "Buscar"
+  },
+  "actions": {
+    "refresh": "Atualizar",
+    "run": "Executar",
+    "stop": "Parar"
+  },
+  "loading": {
+    "games": "Carregando jogos do Discord..."
+  },
+  "favorites": {
+    "title": "Favoritos",
+    "add": "Adicionar aos favoritos",
+    "remove": "Remover dos favoritos"
+  },
+  "playlist": {
+    "title": "Lista de Reprodução",
+    "toggle": "Lista",
+    "add": "Adicionar à lista de reprodução",
+    "remove": "Remover da lista de reprodução",
+    "full": "Lista cheia (máx. {{max}} jogos)",
+    "empty": "Nenhum jogo na lista ainda. Adicione até {{max}} jogos usando o botão de lista em qualquer jogo.",
+    "playDurationLabel": "Tempo de reprodução",
+    "breakIntervalLabel": "Intervalo entre jogos",
+    "minutesShort": "min",
+    "start": "Iniciar",
+    "stop": "Parar",
+    "skip": "Próximo jogo",
+    "skipBreak": "Iniciar próximo agora",
+    "clear": "Limpar",
+    "moveUp": "Mover para cima",
+    "moveDown": "Mover para baixo",
+    "playing": "Em execução",
+    "upNext": "A seguir",
+    "breakStatus": "Intervalo — próximo: {{name}}",
+    "completed": "Concluído",
+    "queued": "Na fila",
+    "remaining": "{{time}} restantes",
+    "progress": "{{current}} de {{total}}"
+  },
+  "gameCard": {
+    "running": "Em execução",
+    "executables": "Executáveis",
+    "id": "ID",
+    "runViaSteam": "Executar pela biblioteca Steam"
+  },
+  "pagination": {
+    "previous": "Anterior",
+    "next": "Próxima",
+    "goToPage": "Ir para a página:",
+    "of": "de"
+  },
+  "footer": {
+    "favorite": "favorito",
+    "favorites": "favoritos",
+    "showing": "Mostrando",
+    "game": "jogo",
+    "games": "jogos",
+    "page": "Página",
+    "noGames": "Nenhum jogo para exibir"
+  },
+  "emptyState": {
+    "noGamesFound": "Nenhum jogo encontrado para a sua busca."
+  },
+  "toast": {
+    "refreshed": {
+      "title": "Atualizado",
+      "description": "{{count}} jogos carregados da API do Discord."
+    },
+    "loadedFromCache": {
+      "title": "Carregado do cache",
+      "description": "{{count}} jogos carregados do cache."
+    },
+    "error": {
+      "title": "Erro",
+      "fetchFailed": "Falha ao buscar jogos: {{error}}"
+    },
+    "cannotStartGame": {
+      "title": "Não foi possível iniciar o jogo",
+      "noExecutables": "Este jogo não possui executáveis definidos."
+    },
+    "gameStarted": {
+      "title": "Jogo iniciado",
+      "description": "{{name}} está em execução."
+    },
+    "steamRestart": {
+      "title": "Reinicie o Discord para atualizar a detecção da Steam",
+      "description": "O Discord estava aberto quando este jogo da Steam foi registrado. Reinicie o Discord uma vez para carregar a biblioteca atualizada."
+    },
+    "failedToStartGame": {
+      "title": "Falha ao iniciar o jogo"
+    },
+    "gameStopped": {
+      "title": "Jogo parado",
+      "description": "{{name}} foi parado."
+    },
+    "failedToStopGame": {
+      "title": "Falha ao parar o jogo"
+    },
+    "addedToFavorites": {
+      "title": "Adicionado aos favoritos"
+    },
+    "removedFromFavorites": {
+      "title": "Removido dos favoritos"
+    },
+    "failedToUpdateFavorites": {
+      "title": "Falha ao atualizar favoritos"
+    },
+    "addedToPlaylist": {
+      "title": "Adicionado à lista de reprodução"
+    },
+    "removedFromPlaylist": {
+      "title": "Removido da lista de reprodução"
+    },
+    "playlistFull": {
+      "title": "Lista de reprodução cheia",
+      "description": "Você pode adicionar no máximo {{max}} jogos à lista."
+    },
+    "playlistStarted": {
+      "title": "Lista de reprodução iniciada",
+      "description": "Executando {{count}} jogos ({{playMinutes}} min cada, {{breakMinutes}} min de intervalo)."
+    },
+    "playlistBreak": {
+      "title": "Intervalo entre jogos",
+      "description": "Aguardando {{minutes}} min antes de iniciar {{name}}."
+    },
+    "playlistNext": {
+      "title": "Próximo jogo da lista",
+      "description": "Executando agora {{name}} ({{current}}/{{total}})."
+    },
+    "playlistStopped": {
+      "title": "Lista de reprodução parada",
+      "description": "A execução da lista de reprodução foi interrompida."
+    },
+    "playlistCompleted": {
+      "title": "Lista de reprodução concluída",
+      "description": "Todos os {{count}} jogos da lista foram finalizados."
+    },
+    "playlistSkippedError": {
+      "title": "Jogo pulado na lista",
+      "description": "Não foi possível iniciar {{name}}. Avançando para o próximo jogo."
+    },
+    "updateAvailable": {
+      "title": "Atualização disponível!",
+      "description": "A versão {{version}} está disponível. Clique no botão de atualização para instalar."
+    },
+    "updateDownloading": {
+      "title": "Baixando atualização...",
+      "description": "Baixando versão {{version}} ({{progress}}%)"
+    },
+    "updateReady": {
+      "title": "Atualização pronta",
+      "description": "A versão {{version}} foi baixada. Reinicie para aplicar."
+    },
+    "updateInstalling": {
+      "title": "Instalando atualização...",
+      "description": "Aguarde enquanto a atualização está sendo instalada."
+    },
+    "updateError": {
+      "title": "Erro na atualização",
+      "description": "Falha ao atualizar: {{error}}"
+    },
+    "updateNoUpdates": {
+      "title": "Nenhuma atualização disponível",
+      "description": "Você já está usando a versão mais recente."
+    },
+    "updateCheckFailed": {
+      "title": "Falha ao verificar atualizações",
+      "description": "Não foi possível verificar atualizações: {{error}}"
+    }
+  },
+  "theme": {
+    "toggleLight": "Mudar para modo claro",
+    "toggleDark": "Mudar para modo escuro"
+  },
+  "updater": {
+    "tooltip": "Atualização disponível - clique para instalar",
+    "downloading": "Baixando...",
+    "restart": "Reiniciar para atualizar"
+  },
+  "taskManager": {
+    "title": "Jogos em Execução",
+    "stopAll": "Parar Todos os Jogos",
+    "noGames": "Nenhum jogo em execução"
+  }
+}
